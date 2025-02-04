@@ -6,7 +6,7 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "marte-desktop-tauri",
+    "productName": "Marte",
     "version": "0.1.0"
   },
   "tauri": {
@@ -19,7 +19,7 @@
     },
     "windows": [
       {
-        "title": "marte-desktop-tauri",
+        "title": "Marte",
         "width": 1000,
         "height": 600
       }
