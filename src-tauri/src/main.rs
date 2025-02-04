@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::Command;
 use serde_json::Value;
@@ -10,6 +10,11 @@ use tokio::runtime::Runtime;
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn get_os_type() -> String {
+    std::env::consts::OS.to_string() // Returns "windows", "macos", or "linux"
 }
 
 #[tauri::command]
@@ -53,51 +58,95 @@ async fn get_function_call_scripts(token: String) -> Result<Value, String> {
     Ok(json_response)
 }
 
+async fn get_env_scripts(platform: String) -> Result<Value, String> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(&format!("https://marte.izeeshan.dev/env_script/{}", platform))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json_response = response
+        .json::<Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    Ok(json_response)
+}
+
 #[tauri::command]
 fn execute_powershell_script(psscript: String, token: String) -> Result<Value, String> {
-    println!("PS Script: {}", psscript);
-    println!("Token: {}", token);
-    let script = r#"
-    if (Get-Command "uv" -ErrorAction SilentlyContinue) {
-        Write-Host "uv installed already."
-    } else {
-        powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-    }
-    $uvPath = "$HOME/.local/bin/uv.exe"
-    if (Test-Path $uvPath) {
-        & $uvPath python install 3.11
-        Write-Host "Python 3.11 installation initiated using uv."
-        $programFiles = "C:\Program Files (x86)"
-        $path_venv = Join-Path -Path $programFiles -ChildPath "Marte/venv"
-        if (-Not (Test-Path $path_venv)) {
-            & $uvPath venv $path_venv --python 3.11
-            Write-Host "Virtual environment created at $path_venv using Python 3.11."
-        } else {
-            Write-Host "Virtual environment already exists at $path_venv."
+    let platform = get_os_type();
+    println!("Platform: {}", platform);
+
+    let rt = Runtime::new().map_err(|e| e.to_string())?;
+
+    if platform.to_lowercase() == "windows" {
+        let marte_dir = r#"C:\Program Files (x86)\Marte"#;
+        let script_path = format!(r#"{}\setup_env.ps1"#, marte_dir);
+        
+        // Create directory if it doesn't exist
+        if !std::path::Path::new(&marte_dir).exists() {
+            std::fs::create_dir_all(&marte_dir).map_err(|e| e.to_string())?;
         }
-        Set-Location $path_venv
-        & $uvPath pip install fastapi uvicorn requests beautifulsoup4 pyttsx3 cryptography pyperclip googlesearch-python
-        Write-Host "Pip libraries installed with uv."
-        exit 0
-    } else {
-        Write-Host "uv executable not found at $uvPath."
-        exit 1
+
+        if !std::path::Path::new(&script_path).exists() { // if the script doesn't exist
+            let script: Value = rt.block_on(get_env_scripts(platform))?;
+            
+            // Save the script to a file
+            std::fs::write(&script_path, script["content"].as_str().unwrap()).map_err(|e| e.to_string())?;
+
+            // call powershell script with elevated access
+            let output = Command::new("powershell")
+                .arg("-ExecutionPolicy")
+                .arg("ByPass")
+                .arg("-Command")
+                .arg(format!("Start-Process powershell -ArgumentList '-ExecutionPolicy ByPass -File {}' -Verb RunAs", script_path))
+                .output()
+                .expect("Failed to execute PowerShell command with elevated access");
+                
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                println!("Output: {}", stdout);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                println!("Error: {}", stderr);
+            }
+        }
+        else {
+            println!("Script already exists at {}", script_path);
+        }
     }
-    "#;
+    else if platform.to_lowercase() == "macos" {
+        let marte_dir = format!("{}/.marte", std::env::var("HOME").unwrap());
+        let script_path = format!("{}/setup_env.sh", marte_dir);
 
-    let output = Command::new("powershell")
-        .args(&["-Command", script])
-        .output()
-        .expect("Failed to execute PowerShell script");
+        if !std::path::Path::new(&script_path).exists() { // if the script doesn't exist
+            let script: Value = rt.block_on(get_env_scripts(platform))?;
+            
+            // Save the script to a file
+            std::fs::write(&script_path, script["content"].as_str().unwrap()).map_err(|e| e.to_string())?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        println!("Output: {}", stdout);
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("Error: {}", stderr);
+            // call powershell script
+            let output = Command::new("sh")
+                .arg("-c")
+                .arg(&script_path)
+                .output()
+                .expect("Failed to execute PowerShell command");
+                
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                println!("Output: {}", stdout);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                println!("Error: {}", stderr);
+            }
+        }
+        else {
+            println!("Script already exists at {}", script_path);
+        }
     }
-
 
     let python_path = "C:\\Program Files (x86)\\Marte\\venv\\Scripts\\python.exe";
     let temp_path = std::env::temp_dir().join("operate_scripts");
@@ -111,7 +160,7 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
     println!("Config path: {}", config_path.display());
 
     // Use a runtime to run the async function
-    let rt = Runtime::new().map_err(|e| e.to_string())?;
+    
     let config: Value = rt.block_on(get_user_config(token.clone()))?;
     let config_str = serde_json::to_string(&config).map_err(|e| e.to_string())?;
 
