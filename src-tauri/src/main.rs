@@ -1,4 +1,4 @@
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::Command;
 use serde_json::Value;
@@ -92,7 +92,7 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
         }
 
         if !std::path::Path::new(&script_path).exists() { // if the script doesn't exist
-            let script: Value = rt.block_on(get_env_scripts(platform))?;
+            let script: Value = rt.block_on(get_env_scripts(platform.clone()))?;
             
             // Save the script to a file
             std::fs::write(&script_path, script["content"].as_str().unwrap()).map_err(|e| e.to_string())?;
@@ -122,15 +122,20 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
         let marte_dir = format!("{}/.marte", std::env::var("HOME").unwrap());
         let script_path = format!("{}/setup_env.sh", marte_dir);
 
+        if !std::path::Path::new(&marte_dir).exists() {
+            std::fs::create_dir_all(&marte_dir).map_err(|e| e.to_string())?;
+        }
+
         if !std::path::Path::new(&script_path).exists() { // if the script doesn't exist
-            let script: Value = rt.block_on(get_env_scripts(platform))?;
+            let script: Value = rt.block_on(get_env_scripts(platform.clone()))?;
+
+            println!("MacOS Script content: {:?}", script["content"].as_str().unwrap());
             
             // Save the script to a file
             std::fs::write(&script_path, script["content"].as_str().unwrap()).map_err(|e| e.to_string())?;
 
             // call powershell script
             let output = Command::new("sh")
-                .arg("-c")
                 .arg(&script_path)
                 .output()
                 .expect("Failed to execute PowerShell command");
@@ -148,7 +153,11 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
         }
     }
 
-    let python_path = "C:\\Program Files (x86)\\Marte\\venv\\Scripts\\python.exe";
+    let python_path = if platform.to_lowercase() == "macos" {
+        format!("{}/.marte/venv/bin/python", std::env::var("HOME").unwrap())
+    } else {
+        "C:\\Program Files (x86)\\Marte\\venv\\Scripts\\python.exe".to_string()
+    };
     let temp_path = std::env::temp_dir().join("operate_scripts");
     let script_path = temp_path.join("script.py");
     let config_path = temp_path.join("config.json");
