@@ -16,6 +16,15 @@ serde = { version = "1", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
+base64 = "0.21.0"
+tokio-tungstenite = "0.20.0"
+rsautogui = "0.2.2"
+websockets = "0.3.0"
+image = "0.25.5"
+log = "0.4.25"
+rustautogui = "0.3.2"
+
+
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

@@ -1,10 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use serde_json::Value;
 use reqwest::header::{AUTHORIZATION, HeaderValue};
 // use tauri::command;
 use tokio::runtime::Runtime;
+use std::io::{BufRead, BufReader};
 
 // Learn more about Tauri commands at https://v1.tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -83,7 +84,7 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
     let rt = Runtime::new().map_err(|e| e.to_string())?;
 
     if platform.to_lowercase() == "windows" {
-        let marte_dir = r#"C:\Program Files (x86)\Marte"#;
+        let marte_dir = format!(r#"{}\Marte"#, std::env::var("USERPROFILE").unwrap());
         let script_path = format!(r#"{}\setup_env.ps1"#, marte_dir);
         
         // Create directory if it doesn't exist
@@ -138,7 +139,7 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
             let output = Command::new("sh")
                 .arg(&script_path)
                 .output()
-                .expect("Failed to execute PowerShell command");
+                .expect("Failed to execute shell command");
                 
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -156,7 +157,7 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
     let python_path = if platform.to_lowercase() == "macos" {
         format!("{}/.marte/venv/bin/python", std::env::var("HOME").unwrap())
     } else {
-        "C:\\Program Files (x86)\\Marte\\venv\\Scripts\\python.exe".to_string()
+        format!("{}/Marte/venv/Scripts/python.exe", std::env::var("USERPROFILE").unwrap())
     };
     let temp_path = std::env::temp_dir().join("operate_scripts");
     let script_path = temp_path.join("script.py");
@@ -169,7 +170,7 @@ fn execute_powershell_script(psscript: String, token: String) -> Result<Value, S
     println!("Config path: {}", config_path.display());
 
     // Use a runtime to run the async function
-    
+
     let config: Value = rt.block_on(get_user_config(token.clone()))?;
     let config_str = serde_json::to_string(&config).map_err(|e| e.to_string())?;
 

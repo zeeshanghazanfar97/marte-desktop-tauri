@@ -609,26 +609,35 @@
 import json
 import sys
 import os
+import asyncio
 
 # Add path of __main__ to sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from function_call_scripts import ${functionName}
 
-config = json.loads("""${configContent}""")
-arguments = json.loads('${arguments}')
+async def main():
+    config = json.loads("""${configContent}""")
+    arguments = json.loads('${arguments}')
 
-result = ${functionName}(**arguments)
+    result = await ${functionName}(**arguments)
 
-# Remove all unicode characters from the result
-try: result = result.encode('ascii', 'ignore').decode('ascii')
-except: pass
+    # Remove all unicode characters from the result
+    try: 
+        result = result.encode('ascii', 'ignore').decode('ascii')
+    except: 
+        pass
 
-# Print the result to be captured by the Electron API
-print(result)
+    # Print the result to be captured by the Electron API
+    print(result)
+
+# Run the async main function
+asyncio.run(main())
 
         `
           // Execute the function call using the Electron API
+          console.log('Function name:', functionName);
+          console.log('Arguments:', arguments);
           try {
             const result = await window.__TAURI__.invoke("execute_powershell_script", { psscript: function_executer_python_script, token:  getToken() });
             console.log('Function call result:', result);
@@ -703,22 +712,24 @@ print(result)
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
-      
-      appVersion = await window.electronAPI.getAppVersion()
-      // set windows title to "Marte - " + appVersion
-      document.title = `Marte - v${appVersion}`;
-
       try {
-        const pythonScript = `print("Hello from Python3.11!")
-print("second line")`
+        const pythonScript = `
+# import pyautogui
+# pyautogui.press('win')
+# pyautogui.write('Hello, World!')
+print("Hello from Python3.11!")
+print("second line")
+`
         const configContent = ""
         const functionCallScripts = ""
-        const result = await window.electronAPI.executePython(pythonScript);
+        const result = await window.__TAURI__.invoke("execute_powershell_script", { psscript: pythonScript, token:  getToken() });
         console.log('Python script output:', result);
       } catch (error) {
         console.error('Error executing Python script:', error);
       }
     });
+    
+
   </script>
 
 </body>
